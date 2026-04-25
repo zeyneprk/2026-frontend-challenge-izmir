@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #18181b;
+}
+
+@layer base {
+  :root {
+    font: 16px/1.45 system-ui, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply m-0 min-h-svh text-slate-900 antialiased;
+  }
+
+  #root {
+    @apply h-svh min-h-0 w-full;
+  }
+}
+
+@layer components {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}

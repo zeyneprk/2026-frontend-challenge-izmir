@@ -10,20 +10,24 @@ import {
  * Personal notes and anonymous tips as polaroid / post-it style cards.
  */
 export function EvidenceBoardPanel() {
-  const { searchFilteredEvidences, selectedPerson, loading } = useDetective()
+  const { searchFilteredEvidences, selectedPerson, loading, searchQuery } =
+    useDetective()
 
   const personKey = selectedPerson.trim().toLowerCase()
+  const hasPerson = personKey.length > 0
 
-  const personEvidences = useMemo(
-    () => filterEvidencesByPersonKey(searchFilteredEvidences, personKey),
-    [searchFilteredEvidences, personKey],
-  )
+  const sourceEvidences = useMemo(() => {
+    if (hasPerson) {
+      return filterEvidencesByPersonKey(searchFilteredEvidences, personKey)
+    }
+    return searchFilteredEvidences
+  }, [searchFilteredEvidences, personKey, hasPerson])
 
   const cards = useMemo(() => {
-    return personEvidences
+    return sourceEvidences
       .filter((e) => e.type === 'note' || e.type === 'tip')
       .sort((a, b) => toTimeNumber(b.timestamp) - toTimeNumber(a.timestamp))
-  }, [personEvidences])
+  }, [sourceEvidences])
 
   if (loading) {
     return (
@@ -44,16 +48,25 @@ export function EvidenceBoardPanel() {
   if (cards.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-3 text-center text-sm text-zinc-500">
-        No personal notes or tips for this suspect.
+        {hasPerson
+          ? 'No personal notes or tips for this suspect.'
+          : 'No personal notes or tips in the current search.'}
       </div>
     )
   }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-2 transition-all duration-300 ease-out">
-      <h3 className="mb-2 px-1 font-serif text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
-        Intel board
-      </h3>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-1 px-1">
+        <h3 className="font-serif text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
+          Intel board
+        </h3>
+        {!hasPerson && searchQuery.trim().length > 0 && (
+          <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500/90">
+            Global search
+          </span>
+        )}
+      </div>
       <ul className="space-y-3">
         {cards.map((ev, index) => {
           const isTip = ev.type === 'tip'
@@ -83,6 +96,11 @@ export function EvidenceBoardPanel() {
               >
                 <span>
                   {isTip ? 'Anonymous tip' : 'Personal note'}
+                  {!hasPerson && ev.person && (
+                    <span className="ml-1 font-normal normal-case text-slate-500">
+                      · {ev.person}
+                    </span>
+                  )}
                 </span>
                 {ev.timestamp && (
                   <time

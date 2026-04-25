@@ -1,6 +1,7 @@
 import { useDetective } from '../../hooks/useDetective.js'
 import { CaseFilesPlaceholder } from '../detective/CaseFilesPlaceholder.jsx'
 import { EvidenceBoardPanel } from '../detective/EvidenceBoardPanel.jsx'
+import { MapPanel } from '../detective/MapPanel.jsx'
 import { TimelinePanel } from '../detective/TimelinePanel.jsx'
 import { Sidebar } from './Sidebar.jsx'
 
@@ -19,6 +20,9 @@ export function DetectiveShell() {
   } = useDetective()
 
   const hasSelection = selectedPerson.trim().length > 0
+  const hasSearch = searchQuery.trim().length > 0
+  const showWorkspace = hasSelection || hasSearch
+  const workspaceKey = `${selectedPerson.trim().toLowerCase()}|${searchQuery}`
 
   return (
     <div className="flex h-svh w-full min-h-0 flex-col bg-zinc-950 text-left text-zinc-100">
@@ -70,24 +74,18 @@ export function DetectiveShell() {
       </header>
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        {!hasSelection ? (
+        {!showWorkspace ? (
           <CaseFilesPlaceholder />
         ) : (
           <div
-            key={selectedPerson.trim().toLowerCase()}
-            className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden border-l border-zinc-800/50 transition-opacity duration-300 ease-out lg:grid-cols-[1fr_minmax(18rem,22rem)]"
+            key={workspaceKey}
+            className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden border-l border-zinc-800/50 transition-all duration-300 ease-out lg:grid-cols-[1fr_minmax(18rem,22rem)]"
           >
             <div className="flex min-h-0 min-w-0 flex-col border-b border-zinc-800/50 lg:border-b-0 lg:border-r lg:border-zinc-800/50">
               <div className="shrink-0 p-2 sm:p-2.5">
-                <div
-                  className="flex h-24 min-w-0 items-center justify-center rounded border border-dashed border-zinc-700/80 bg-zinc-900/30 text-xs text-zinc-500"
-                  role="status"
-                  aria-label="Map container placeholder"
-                >
-                  Map (placeholder)
-                </div>
+                <MapPanel />
               </div>
-              <div className="min-h-0 flex flex-1 flex-col border-t border-zinc-800/50 bg-zinc-900/20">
+              <div className="flex min-h-0 flex-1 flex-col border-t border-zinc-800/50 bg-zinc-900/20">
                 <TimelinePanel />
               </div>
             </div>

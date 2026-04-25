@@ -397,3 +397,29 @@ export function confidenceToReliabilityPercent(confidence) {
   if (c === 'low') return 35
   return 50
 }
+
+/**
+ * Parses "lat,lng" or "lat, lng" from Jotform / evidence strings.
+ * @param {string | null | undefined} value
+ * @returns {{ lat: number, lng: number } | null}
+ */
+export function parseCoordinatesString(value) {
+  if (value == null) return null
+  const s = String(value).trim()
+  if (s.length === 0) return null
+  const parts = s.split(/[,;]\s*/)
+  if (parts.length < 2) return null
+  const lat = parseFloat(parts[0])
+  const lng = parseFloat(parts[1])
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  return { lat, lng }
+}
+
+/**
+ * @param {import('./evidenceNormalizer.js').Evidence} ev
+ * @returns {{ lat: number, lng: number } | null}
+ */
+export function getEvidenceLatLng(ev) {
+  return parseCoordinatesString(ev.coordinates)
+}

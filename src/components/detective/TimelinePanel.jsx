@@ -14,24 +14,29 @@ const TIMELINE_TYPES = new Set(['checkin', 'message', 'sighting'])
  * Red border + CONTRADICTION when `checkForContradictions` flags a message.
  */
 export function TimelinePanel() {
-  const { searchFilteredEvidences, selectedPerson, loading } = useDetective()
+  const { searchFilteredEvidences, selectedPerson, loading, searchQuery } =
+    useDetective()
 
   const personKey = selectedPerson.trim().toLowerCase()
+  const hasPerson = personKey.length > 0
+  const isGlobalList = !hasPerson && searchQuery.trim().length > 0
 
-  const personEvidences = useMemo(
-    () => filterEvidencesByPersonKey(searchFilteredEvidences, personKey),
-    [searchFilteredEvidences, personKey],
-  )
+  const sourceEvidences = useMemo(() => {
+    if (hasPerson) {
+      return filterEvidencesByPersonKey(searchFilteredEvidences, personKey)
+    }
+    return searchFilteredEvidences
+  }, [searchFilteredEvidences, personKey, hasPerson])
 
   const timelineItems = useMemo(() => {
-    return personEvidences
+    return sourceEvidences
       .filter((e) => TIMELINE_TYPES.has(e.type))
       .sort((a, b) => toTimeNumber(b.timestamp) - toTimeNumber(a.timestamp))
-  }, [personEvidences])
+  }, [sourceEvidences])
 
   const contradictionIds = useMemo(
-    () => checkForContradictions(personEvidences),
-    [personEvidences],
+    () => checkForContradictions(sourceEvidences),
+    [sourceEvidences],
   )
 
   if (loading) {
@@ -53,16 +58,23 @@ export function TimelinePanel() {
   if (timelineItems.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-3 text-sm text-zinc-500 transition-opacity duration-200">
-        No check-ins, messages, or sightings for this filter.
+        No check-ins, messages, or sightings for this view.
       </div>
     )
   }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-2 transition-all duration-300 ease-out">
-      <h3 className="mb-2 px-1 font-serif text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
-        Chronology
-      </h3>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-1 px-1">
+        <h3 className="font-serif text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
+          Chronology
+        </h3>
+        {isGlobalList && (
+          <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500/90">
+            Global search
+          </span>
+        )}
+      </div>
       <ol className="relative pl-1">
         <div
           className="absolute bottom-0 left-[11px] top-0 w-px bg-zinc-800"
@@ -105,6 +117,11 @@ export function TimelinePanel() {
                     role="status"
                   >
                     CONTRADICTION
+                  </p>
+                )}
+                {isGlobalList && ev.person && (
+                  <p className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500">
+                    {ev.person}
                   </p>
                 )}
                 {ev.location && (

@@ -1,8 +1,11 @@
 import { useDetective } from '../../hooks/useDetective.js'
+import { CaseFilesPlaceholder } from '../detective/CaseFilesPlaceholder.jsx'
 import { EvidenceBoardPanel } from '../detective/EvidenceBoardPanel.jsx'
+import { TimelinePanel } from '../detective/TimelinePanel.jsx'
+import { Sidebar } from './Sidebar.jsx'
 
 /**
- * 3-column shell: navigation | map + timeline | evidence. Map/timeline are placeholders.
+ * 3-column shell: sidebar (suspects) | map + timeline | evidence, with global case search.
  */
 export function DetectiveShell() {
   const {
@@ -10,46 +13,55 @@ export function DetectiveShell() {
     error,
     fetchErrors,
     refetchEvidences,
+    searchQuery,
+    setSearchQuery,
     selectedPerson,
-    setSelectedPerson,
   } = useDetective()
 
+  const hasSelection = selectedPerson.trim().length > 0
+
   return (
-    <div className="flex h-svh w-full min-h-0 flex-col text-left text-slate-900">
-      <header className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+    <div className="flex h-svh w-full min-h-0 flex-col bg-zinc-950 text-left text-zinc-100">
+      <header className="shrink-0 border-b border-zinc-800/90 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-300">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-slate-800">The Podo Case</span>
-          <div className="flex items-center gap-2">
-            {loading && <span aria-live="polite">Loading data…</span>}
+          <span className="font-serif text-sm font-semibold text-zinc-100">
+            The Podo Case
+          </span>
+          <div className="flex min-w-0 max-w-md flex-1 items-center justify-end gap-2 sm:max-w-lg">
+            {loading && (
+              <span className="shrink-0 text-xs text-zinc-500" aria-live="polite">
+                Loading data…
+              </span>
+            )}
             {error && (
-              <span className="text-red-600" title={error}>
+              <span className="shrink-0 text-xs text-rose-300" title={error}>
                 {error}
               </span>
             )}
             {fetchErrors.length > 0 && !error && (
               <span
-                className="text-amber-700"
+                className="shrink-0 text-xs text-amber-200/90"
                 title={fetchErrors.map((e) => e.error).join('\n')}
               >
                 Partial load ({fetchErrors.length} form
                 {fetchErrors.length > 1 ? 's' : ''})
               </span>
             )}
-            <label className="sr-only" htmlFor="filter-person">
-              Filter by person
+            <label className="sr-only" htmlFor="global-case-search">
+              Global case search
             </label>
             <input
-              id="filter-person"
+              id="global-case-search"
               type="search"
-              value={selectedPerson}
-              onChange={(e) => setSelectedPerson(e.target.value)}
-              placeholder="Person filter"
-              className="w-40 max-w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search names, places, content…"
+              className="min-w-0 flex-1 rounded border border-zinc-700/90 bg-zinc-950/80 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline focus:outline-1 focus:outline-amber-500/40"
             />
             <button
               type="button"
               onClick={() => void refetchEvidences()}
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 hover:bg-slate-100"
+              className="shrink-0 rounded border border-zinc-600/80 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800/90"
             >
               Refresh
             </button>
@@ -57,31 +69,33 @@ export function DetectiveShell() {
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <aside
-          className="hidden w-56 shrink-0 border-r border-slate-200 bg-slate-100/60 md:block"
-          aria-label="Sidebar"
-        >
-          <p className="p-3 text-xs text-slate-500">Sidebar (reserved)</p>
-        </aside>
-        <div className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_minmax(18rem,22rem)]">
-          <div className="flex min-h-0 flex-col border-b border-slate-200 lg:border-b-0 lg:border-r">
-            <div className="min-h-0 flex-1 bg-slate-200/50 p-3">
-              <div
-                className="flex h-full min-h-40 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-100/80 text-slate-500"
-                role="status"
-                aria-label="Map container placeholder"
-              >
-                Map (placeholder)
+        <Sidebar />
+        {!hasSelection ? (
+          <CaseFilesPlaceholder />
+        ) : (
+          <div
+            key={selectedPerson.trim().toLowerCase()}
+            className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden border-l border-zinc-800/50 transition-opacity duration-300 ease-out lg:grid-cols-[1fr_minmax(18rem,22rem)]"
+          >
+            <div className="flex min-h-0 min-w-0 flex-col border-b border-zinc-800/50 lg:border-b-0 lg:border-r lg:border-zinc-800/50">
+              <div className="shrink-0 p-2 sm:p-2.5">
+                <div
+                  className="flex h-24 min-w-0 items-center justify-center rounded border border-dashed border-zinc-700/80 bg-zinc-900/30 text-xs text-zinc-500"
+                  role="status"
+                  aria-label="Map container placeholder"
+                >
+                  Map (placeholder)
+                </div>
+              </div>
+              <div className="min-h-0 flex flex-1 flex-col border-t border-zinc-800/50 bg-zinc-900/20">
+                <TimelinePanel />
               </div>
             </div>
-            <div className="h-40 shrink-0 border-t border-slate-200 bg-slate-50 p-2">
-              <p className="text-xs text-slate-500">Timeline (empty)</p>
+            <div className="min-h-0 min-w-0 overflow-hidden border-t border-zinc-800/50 bg-amber-950/5 p-0 lg:border-t-0">
+              <EvidenceBoardPanel />
             </div>
           </div>
-          <div className="min-h-0 min-w-0 overflow-hidden bg-slate-50/80 p-0">
-            <EvidenceBoardPanel />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )

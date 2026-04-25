@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DetectiveContext } from './detectiveContext.js'
 import { fetchAllEvidences } from '../services/jotformService.js'
+import { filterEvidencesByFuzzySearch } from '../utils/detectiveLogic.js'
 
 /**
  * @param { { children: import('react').ReactNode } } props
@@ -13,6 +14,7 @@ export function DetectiveProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(/** @type {string | null} */ (null))
   const [selectedPerson, setSelectedPerson] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const refetchEvidences = useCallback(async () => {
     setLoading(true)
@@ -38,31 +40,33 @@ export function DetectiveProvider({ children }) {
     return () => cancelAnimationFrame(id)
   }, [refetchEvidences])
 
-  const filteredEvidences = useMemo(() => {
-    const key = selectedPerson.trim().toLowerCase()
-    if (key === '') return evidences
-    return evidences.filter((e) => e.person.toLowerCase().includes(key))
-  }, [evidences, selectedPerson])
+  const searchFilteredEvidences = useMemo(
+    () => filterEvidencesByFuzzySearch(evidences, searchQuery),
+    [evidences, searchQuery],
+  )
 
   const value = useMemo(
     () => ({
       evidences,
+      searchFilteredEvidences,
+      searchQuery,
+      setSearchQuery,
       fetchErrors,
       loading,
       error,
       selectedPerson,
       setSelectedPerson,
       refetchEvidences,
-      filteredEvidences,
     }),
     [
       evidences,
+      searchFilteredEvidences,
+      searchQuery,
       fetchErrors,
       loading,
       error,
       selectedPerson,
       refetchEvidences,
-      filteredEvidences,
     ],
   )
 

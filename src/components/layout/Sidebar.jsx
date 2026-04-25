@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useDetective } from '../../hooks/useDetective.js'
 import { buildOrderedSuspectList } from '../../utils/detectiveLogic.js'
 import { ActivityTypeIcon } from './ActivityTypeIcon.jsx'
@@ -15,11 +15,21 @@ function threatBarClasses(threat) {
 export function Sidebar() {
   const { evidences, loading, error, selectedPerson, setSelectedPerson } =
     useDetective()
+  const [suspectListQuery, setSuspectListQuery] = useState('')
 
   const suspects = useMemo(
     () => buildOrderedSuspectList(evidences),
     [evidences],
   )
+
+  const filteredSuspects = useMemo(() => {
+    const q = suspectListQuery.trim().toLowerCase()
+    if (!q) return suspects
+    return suspects.filter(
+      (s) =>
+        s.displayName.toLowerCase().includes(q) || s.key.includes(q),
+    )
+  }, [suspects, suspectListQuery])
 
   const selectedKey = selectedPerson.trim().toLowerCase()
 
@@ -73,12 +83,48 @@ export function Sidebar() {
         <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
           case file 04 · Podo
         </p>
+        <label className="mt-2 block text-[9px] font-medium uppercase tracking-wider text-zinc-500">
+          Filter list
+        </label>
+        <input
+          type="search"
+          value={suspectListQuery}
+          onChange={(e) => setSuspectListQuery(e.target.value)}
+          placeholder="Search by name…"
+          className="mt-1 w-full rounded border border-zinc-700/80 bg-zinc-950/80 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-700/50 focus:outline-none focus:ring-1 focus:ring-emerald-600/30"
+          autoComplete="off"
+        />
       </div>
       <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+        <li>
+          <button
+            type="button"
+            onClick={() => setSelectedPerson('')}
+            className={[
+              'w-full rounded-lg border px-2.5 py-2.5 text-left text-sm transition',
+              selectedKey.length === 0
+                ? 'border-emerald-500/50 bg-emerald-950/30 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.2)]'
+                : 'border-zinc-800/80 bg-zinc-900/50 hover:border-zinc-600 hover:bg-zinc-900/80',
+            ].join(' ')}
+            aria-pressed={selectedKey.length === 0}
+          >
+            <span className="font-serif font-semibold text-zinc-100">
+              All suspects
+            </span>
+            <p className="mt-0.5 text-[10px] text-zinc-500">
+              Global view · search and filters only
+            </p>
+          </button>
+        </li>
         {suspects.length === 0 && (
           <li className="px-1 py-2 text-sm text-zinc-500">No names extracted.</li>
         )}
-        {suspects.map((row) => {
+        {suspects.length > 0 && filteredSuspects.length === 0 && (
+          <li className="px-1 py-2 text-xs text-zinc-500">
+            No suspects match “{suspectListQuery.trim()}”.
+          </li>
+        )}
+        {filteredSuspects.map((row) => {
           const isActive = selectedKey === row.key
           return (
             <li key={row.key}>

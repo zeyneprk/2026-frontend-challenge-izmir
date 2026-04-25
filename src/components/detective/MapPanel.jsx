@@ -14,6 +14,7 @@ import { useManualLeads } from '../../hooks/useManualLeads.js'
 import {
   filterEvidencesByPersonKey,
   getEvidenceLatLng,
+  PODO_PERSON_KEY,
   toTimeNumber,
 } from '../../utils/detectiveLogic.js'
 
@@ -31,6 +32,36 @@ const CHECKIN = { fill: '#22c55e', border: '#14532d' }
 const SIGHTING = { fill: '#a855f7', border: '#581c87' }
 const TIP = { fill: '#eab308', border: '#a16207' }
 const MANUAL = { fill: '#f97316', border: '#9a3412' }
+const PING = { fill: '#22d3ee', border: '#0e7490' }
+
+/**
+ * @param { { target: { lat: number, lng: number } | null, onClear: () => void } } props
+ */
+function MapFlyToPing({ target, onClear }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!target) return
+    map.flyTo([target.lat, target.lng], 16, { duration: 0.55 })
+    const t = setTimeout(() => onClear(), 3000)
+    return () => clearTimeout(t)
+  }, [map, target, onClear])
+  return null
+}
+
+/**
+ * Re-fit tiles when the map container is resized (e.g. drag handle).
+ * @param { { dep: number } } props
+ */
+function InvalidateSizeOnResize({ dep }) {
+  const map = useMap()
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      map.invalidateSize()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [map, dep])
+  return null
+}
 
 /**
  * @param { { onAdd: (lat: number, lng: number) => void, enabled: boolean } } props
@@ -45,21 +76,42 @@ function MapClickToLead({ onAdd, enabled }) {
 }
 
 /**
- * @param { { positions: L.LatLngExpression[] } } props
+ * Bounds use check-ins + sightings (plus manual leads) so the frame matches “spatial evidence”.
+ * `mapAutoFitKey` changes on suspect, search, filter, or when marker coordinates change; `mapPanelHeightPx` re-runs the same fit after resize.
+ * Empty set: Podo’s latest check-in/sight coords if any, else central Izmir.
+ * @param { { mapAutoFitKey: string, checkinSightingLatLng: L.LatLngExpression[], manualLatLng: L.LatLngExpression[], defaultCenter: L.LatLngExpression } } props
  */
-function FitMapBounds({ positions }) {
+function AutoFitMapBounds({
+  mapAutoFitKey,
+  checkinSightingLatLng,
+  manualLatLng,
+  defaultCenter,
+}) {
   const map = useMap()
+
   useEffect(() => {
-    if (positions.length === 0) return
-    if (positions.length === 1) {
-      const p = positions[0]
-      const [lat, lng] = Array.isArray(p) ? p : [p.lat, p.lng]
-      map.setView([lat, lng], 14)
+    const all = [
+      ...checkinSightingLatLng,
+      ...manualLatLng,
+    ]
+    if (all.length === 0) {
+      const c = L.latLng(defaultCenter)
+      map.flyTo(c, DEFAULT_ZOOM, { duration: 0.5 })
       return
     }
-    const b = L.latLngBounds(positions)
-    map.fitBounds(b, { padding: [32, 32], maxZoom: 15 })
-  }, [map, positions])
+    if (all.length === 1) {
+      const c = L.latLng(/** @type {L.LatLngExpression} */ (all[0]))
+      map.flyTo(c, 14, { duration: 0.5 })
+      return
+    }
+    const b = L.latLngBounds(all)
+    map.flyToBounds(b, {
+      padding: [50, 50],
+      maxZoom: 16,
+      duration: 0.6,
+    })
+  }, [map, mapAutoFitKey, checkinSightingLatLng, manualLatLng, defaultCenter])
+
   return null
 }
 
@@ -75,9 +127,21 @@ function typePaletteKey(ev) {
 
 /**
  * Leaflet map: path + markers for a suspect, or all matching geo results for a global search; manual pins in localStorage.
+ * @param { { compact?: boolean, fillHeight?: boolean } } [props]
  */
-export function MapPanel() {
-  const { searchFilteredEvidences, selectedPerson, searchQuery } = useDetective()
+export function MapPanel({ compact = false, fillHeight = false } = {}) {
+  const {
+    searchFilteredEvidences,
+    viewEvidences,
+    evidenceTypeFilter,
+    selectedPerson,
+    searchQuery,
+    mapPing,
+    setMapPing,
+    highlightedGeoEvidenceId,
+    setHighlightedGeoEvidenceId,
+    mapPanelHeightPx,
+  } = useDetective()
   const { leads, addLead, updateNote, removeLead } = useManualLeads()
   const pendingOpenIdRef = useRef(/** @type {string | null} */ (null))
 
@@ -90,11 +154,35 @@ export function MapPanel() {
     [searchFilteredEvidences, personKey],
   )
 
+  const personFiltered = useMemo(() => {
+    const pk = selectedPerson.trim().toLowerCase()
+    if (pk.length === 0) return searchFilteredEvidences
+    return filterEvidencesByPersonKey(searchFilteredEvidences, pk)
+  }, [searchFilteredEvidences, selectedPerson])
+
   const mapSourceEvidences = useMemo(() => {
+    if (evidenceTypeFilter === 'all') {
+      return personFiltered.filter(
+        (e) =>
+          getEvidenceLatLng(e) &&
+          (e.type === 'checkin' || e.type === 'sighting' || e.type === 'tip'),
+      )
+    }
+    if (evidenceTypeFilter === 'checkin' || evidenceTypeFilter === 'sighting') {
+      return viewEvidences
+    }
     if (isPersonView) return personEvidences
     if (hasSearch) return searchFilteredEvidences
     return []
-  }, [isPersonView, hasSearch, personEvidences, searchFilteredEvidences])
+  }, [
+    evidenceTypeFilter,
+    personFiltered,
+    viewEvidences,
+    isPersonView,
+    hasSearch,
+    personEvidences,
+    searchFilteredEvidences,
+  ])
 
   const geoEvidences = useMemo(() => {
     const out = []
@@ -120,24 +208,74 @@ export function MapPanel() {
     return ordered.map((x) => [x.pos.lat, x.pos.lng])
   }, [geoEvidences, isPersonView])
 
-  const evFitPositions = useMemo(
-    () => geoEvidences.map((x) => [x.pos.lat, x.pos.lng]),
+  /** Check-in + sighting pins only (bounds + fly; tips stay on map but use padding, not extent). */
+  const checkinSightingLatLng = useMemo(
+    () =>
+      geoEvidences
+        .filter(
+          ({ ev }) => ev.type === 'checkin' || ev.type === 'sighting',
+        )
+        .map(({ pos }) =>
+          /** @type {L.LatLngExpression} */ ([pos.lat, pos.lng]),
+        ),
     [geoEvidences],
   )
 
-  const allFitPoints = useMemo(() => {
-    const manual = leads.map((l) => [l.lat, l.lng])
-    if (evFitPositions.length === 0 && manual.length === 0) {
-      return /** @type {L.LatLngExpression[]} */ ([[...IZMIR_CENTER]])
+  const manualLatLng = useMemo(
+    () =>
+      leads.map((l) =>
+        /** @type {L.LatLngExpression} */ ([l.lat, l.lng]),
+      ),
+    [leads],
+  )
+
+  const podoLastKnownCenter = useMemo(() => {
+    const forPodo = filterEvidencesByPersonKey(
+      searchFilteredEvidences,
+      PODO_PERSON_KEY,
+    )
+    const spatial = forPodo.filter(
+      (e) =>
+        (e.type === 'checkin' || e.type === 'sighting') &&
+        getEvidenceLatLng(e),
+    )
+    const sorted = [...spatial].sort(
+      (a, b) => toTimeNumber(b.timestamp) - toTimeNumber(a.timestamp),
+    )
+    const latest = sorted[0]
+    if (!latest) return null
+    return getEvidenceLatLng(latest)
+  }, [searchFilteredEvidences])
+
+  const mapDefaultCenter = useMemo(() => {
+    if (podoLastKnownCenter) {
+      return /** @type {L.LatLngExpression} */ ([
+        podoLastKnownCenter.lat,
+        podoLastKnownCenter.lng,
+      ])
     }
-    if (evFitPositions.length === 0) {
-      return /** @type {L.LatLngExpression[]} */ (manual)
-    }
-    if (manual.length === 0) {
-      return /** @type {L.LatLngExpression[]} */ (evFitPositions)
-    }
-    return /** @type {L.LatLngExpression[]} */ ([...evFitPositions, ...manual])
-  }, [evFitPositions, leads])
+    return /** @type {L.LatLngExpression} */ ([...IZMIR_CENTER])
+  }, [podoLastKnownCenter])
+
+  const mapAutoFitKey = useMemo(
+    () =>
+      [
+        personKey,
+        searchQuery.trim(),
+        evidenceTypeFilter,
+        checkinSightingLatLng.map((p) => `${p[0]},${p[1]}`).join(';'),
+        manualLatLng.map((p) => `${p[0]},${p[1]}`).join(';'),
+        mapDefaultCenter.map((n) => String(n)).join(','),
+      ].join('|'),
+    [
+      personKey,
+      searchQuery,
+      evidenceTypeFilter,
+      checkinSightingLatLng,
+      manualLatLng,
+      mapDefaultCenter,
+    ],
+  )
 
   const handleMapClick = useCallback(
     (lat, lng) => {
@@ -147,24 +285,71 @@ export function MapPanel() {
     [addLead],
   )
 
-  const canInteract = isPersonView || hasSearch
+  const canInteract =
+    isPersonView ||
+    hasSearch ||
+    evidenceTypeFilter === 'checkin' ||
+    evidenceTypeFilter === 'sighting' ||
+    evidenceTypeFilter === 'all'
+
+  const clearPing = useCallback(() => setMapPing(null), [setMapPing])
+
+  const onMarkerSelect = useCallback(
+    (ev, pos) => {
+      setHighlightedGeoEvidenceId(String(ev.id))
+      setMapPing({ lat: pos.lat, lng: pos.lng, evidenceId: String(ev.id) })
+    },
+    [setHighlightedGeoEvidenceId, setMapPing],
+  )
 
   return (
-    <div className="relative h-48 min-h-[12rem] w-full min-w-0 overflow-hidden rounded border border-zinc-800/90 bg-zinc-900/50 sm:h-56">
+    <div
+      className={[
+        'relative w-full min-w-0 overflow-hidden rounded border border-zinc-800/90 bg-zinc-900/50',
+        fillHeight
+          ? 'h-full min-h-0'
+          : compact
+            ? 'h-36 min-h-36'
+            : 'h-48 min-h-[12rem] sm:h-56',
+      ].join(' ')}
+    >
       <MapContainer
         center={IZMIR_CENTER}
         zoom={DEFAULT_ZOOM}
         className="h-full w-full [&_.leaflet-tile-pane]:opacity-90"
         scrollWheelZoom
       >
+        <InvalidateSizeOnResize dep={mapPanelHeightPx} />
         <TileLayer
           attribution={CARTO_DARK.attribution}
           url={CARTO_DARK.url}
           subdomains={CARTO_DARK.subdomains}
         />
-        <FitMapBounds positions={allFitPoints} />
+        {mapPing && (
+          <MapFlyToPing target={mapPing} onClear={clearPing} />
+        )}
+        <AutoFitMapBounds
+          mapAutoFitKey={mapAutoFitKey}
+          checkinSightingLatLng={checkinSightingLatLng}
+          manualLatLng={manualLatLng}
+          defaultCenter={mapDefaultCenter}
+        />
         {canInteract && (
           <MapClickToLead onAdd={handleMapClick} enabled={canInteract} />
+        )}
+
+        {mapPing && (
+          <CircleMarker
+            key={`ping-${mapPing.lat}-${mapPing.lng}`}
+            center={[mapPing.lat, mapPing.lng]}
+            radius={14}
+            pathOptions={{
+              color: PING.border,
+              fillColor: PING.fill,
+              fillOpacity: 0.35,
+              weight: 3,
+            }}
+          />
         )}
 
         {isPersonView && pathPositions.length > 1 && (
@@ -181,16 +366,23 @@ export function MapPanel() {
         {geoEvidences.map(({ ev, pos }) => {
           const k = typePaletteKey(ev)
           const pal = k === 'sighting' ? SIGHTING : k === 'tip' ? TIP : CHECKIN
+          const isHi = String(ev.id) === highlightedGeoEvidenceId
           return (
             <CircleMarker
               key={ev.id}
               center={[pos.lat, pos.lng]}
-              radius={8}
+              radius={isHi ? 12 : 8}
               pathOptions={{
-                color: pal.border,
+                color: isHi ? '#fbbf24' : pal.border,
                 fillColor: pal.fill,
-                fillOpacity: 0.9,
-                weight: 2,
+                fillOpacity: isHi ? 1 : 0.9,
+                weight: isHi ? 4 : 2,
+              }}
+              eventHandlers={{
+                click: (e) => {
+                  e?.originalEvent?.stopPropagation?.()
+                  onMarkerSelect(ev, pos)
+                },
               }}
             >
               <Popup>

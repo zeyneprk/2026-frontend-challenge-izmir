@@ -24,6 +24,11 @@
 }
 
 @layer components {
+  /* Post-it / field notes — “handwritten” stack; Windows: Segoe Print, otherwise cursive. */
+  .font-postit {
+    font-family: 'Segoe Print', 'Bradley Hand ITC', 'Apple Chancery', cursive, system-ui, sans-serif;
+  }
+
   .sr-only {
     position: absolute;
     width: 1px;

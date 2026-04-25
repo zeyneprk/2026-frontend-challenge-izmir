@@ -1,155 +1,144 @@
 import { useMemo } from 'react'
 import { useDetective } from '../../hooks/useDetective.js'
-import {
-  confidenceToReliabilityPercent,
-  filterEvidencesByPersonKey,
-  toTimeNumber,
-} from '../../utils/detectiveLogic.js'
+import { postitPaletteClass, rotationFromId } from '../../utils/postitLayout.js'
+import { toDisplayName, toTimeNumber } from '../../utils/detectiveLogic.js'
 
 /**
- * Personal notes and anonymous tips as polaroid / post-it style cards.
+ * Personal notes only: grid of colorful post-it notes (office board).
+ * @param { { variant?: 'default' | 'command' } } [props]
  */
-export function EvidenceBoardPanel() {
-  const { searchFilteredEvidences, selectedPerson, loading, searchQuery } =
-    useDetective()
+export function EvidenceBoardPanel({ variant = 'default' } = {}) {
+  const isCommand = variant === 'command'
+  const { viewEvidences, loading } = useDetective()
 
-  const personKey = selectedPerson.trim().toLowerCase()
-  const hasPerson = personKey.length > 0
-
-  const sourceEvidences = useMemo(() => {
-    if (hasPerson) {
-      return filterEvidencesByPersonKey(searchFilteredEvidences, personKey)
-    }
-    return searchFilteredEvidences
-  }, [searchFilteredEvidences, personKey, hasPerson])
-
-  const cards = useMemo(() => {
-    return sourceEvidences
-      .filter((e) => e.type === 'note' || e.type === 'tip')
+  const notes = useMemo(() => {
+    return viewEvidences
+      .filter((e) => e.type === 'note')
       .sort((a, b) => toTimeNumber(b.timestamp) - toTimeNumber(a.timestamp))
-  }, [sourceEvidences])
+  }, [viewEvidences])
 
   if (loading) {
     return (
       <div
-        className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2"
+        className={['min-h-0 flex-1', isCommand ? 'p-2' : 'p-3 sm:p-4'].join(' ')}
         aria-busy="true"
       >
-        {Array.from({ length: 3 }, (_, i) => (
-          <div
-            key={i}
-            className="h-28 animate-pulse rounded border border-zinc-700/50 bg-amber-950/20"
-          />
-        ))}
+        <div
+          className={[
+            'grid gap-2',
+            isCommand
+              ? 'grid-cols-1 sm:grid-cols-2'
+              : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4',
+          ].join(' ')}
+        >
+          {Array.from({ length: 6 }, (_, i) => (
+            <div
+              key={i}
+              className="aspect-[4/5] animate-pulse rounded border border-zinc-700/50 bg-amber-950/30"
+            />
+          ))}
+        </div>
       </div>
     )
   }
 
-  if (cards.length === 0) {
+  if (notes.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-3 text-center text-sm text-zinc-500">
-        {hasPerson
-          ? 'No personal notes or tips for this suspect.'
-          : 'No personal notes or tips in the current search.'}
+      <div
+        className={[
+          'flex min-h-0 flex-1 items-center justify-center text-zinc-500',
+          isCommand ? 'p-3 text-[11px]' : 'p-6 text-sm',
+        ].join(' ')}
+      >
+        No personal notes in this view. Try another filter or widen search.
       </div>
     )
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-2 transition-all duration-300 ease-out">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-1 px-1">
-        <h3 className="font-serif text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
-          Intel board
-        </h3>
-        {!hasPerson && searchQuery.trim().length > 0 && (
-          <span className="text-[9px] font-medium uppercase tracking-wide text-amber-500/90">
-            Global search
-          </span>
-        )}
+    <div
+      className={['min-h-0 flex-1 overflow-y-auto', isCommand ? 'p-2' : 'p-3 sm:p-4'].join(
+        ' ',
+      )}
+    >
+      <div
+        className={['mb-2 flex flex-wrap items-end justify-between gap-2', isCommand ? 'mb-2' : 'mb-3'].join(' ')}
+      >
+        <h2
+          className={[
+            'font-serif font-semibold tracking-wide text-amber-200/90',
+            isCommand ? 'text-xs' : 'text-sm',
+          ].join(' ')}
+        >
+          Field notes
+        </h2>
+        <span
+          className={[
+            'font-medium uppercase tracking-widest text-emerald-500/80',
+            isCommand ? 'text-[8px]' : 'text-[10px]',
+          ].join(' ')}
+        >
+          Pinboard
+        </span>
       </div>
-      <ul className="space-y-3">
-        {cards.map((ev, index) => {
-          const isTip = ev.type === 'tip'
-          const rel = isTip ? confidenceToReliabilityPercent(ev.confidence) : null
-          const tilt = index % 2 === 0 ? '-rotate-[0.35deg]' : 'rotate-[0.35deg]'
+      <div
+        className={[
+          'grid',
+          isCommand
+            ? 'grid-cols-1 gap-2 sm:grid-cols-2'
+            : 'grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4',
+        ].join(' ')}
+        style={{ perspective: '800px' }}
+      >
+        {notes.map((ev) => {
+          const deg = rotationFromId(String(ev.id))
+          const pal = postitPaletteClass(String(ev.id))
+          const name = toDisplayName(
+            (ev.person && String(ev.person).trim()) || 'unknown',
+          )
           return (
-            <li
+            <article
               key={ev.id}
               className={[
-                isTip
-                  ? 'bg-gradient-to-b from-slate-100 to-slate-200/95'
-                  : 'bg-gradient-to-br from-amber-100 via-amber-50 to-amber-100/90',
-                'rounded border border-black/10 p-2.5 shadow-[0_8px_24px_-4px_rgba(0,0,0,0.45)]',
-                isTip
-                  ? 'font-sans text-slate-900 shadow-md ring-1 ring-white/20'
-                  : "font-['Segoe_Print','Bradley_Hand',cursive] text-amber-950 shadow-lg ring-1 ring-amber-200/30",
-                tilt,
+                'flex flex-col rounded border border-black/10 shadow-lg transition-transform duration-200 hover:z-10 hover:scale-[1.02] hover:shadow-xl',
+                isCommand
+                  ? 'min-h-[6.5rem] p-2'
+                  : 'min-h-[9rem] p-3',
+                'bg-gradient-to-br',
+                pal,
+                'text-zinc-900',
+                'font-postit',
               ].join(' ')}
+              style={{ transform: `rotate(${deg}deg)` }}
             >
-              <div
+              <p
                 className={[
-                  'mb-1 flex items-center justify-between gap-1',
-                  isTip
-                    ? 'text-[9px] font-semibold uppercase text-slate-600'
-                    : 'text-[9px] font-bold uppercase text-amber-900/80',
+                  'font-serif font-bold leading-tight text-zinc-900/95',
+                  isCommand ? 'text-sm' : 'text-base',
                 ].join(' ')}
               >
-                <span>
-                  {isTip ? 'Anonymous tip' : 'Personal note'}
-                  {!hasPerson && ev.person && (
-                    <span className="ml-1 font-normal normal-case text-slate-500">
-                      · {ev.person}
-                    </span>
-                  )}
-                </span>
-                {ev.timestamp && (
-                  <time
-                    className="font-mono text-[9px] opacity-80"
-                    dateTime={String(ev.timestamp)}
-                  >
-                    {ev.timestamp}
-                  </time>
-                )}
-              </div>
-              {isTip && ev.location && (
-                <p className="text-[11px] font-medium text-slate-800">
-                  {ev.location}
-                </p>
+                {name}
+              </p>
+              {ev.timestamp && (
+                <time
+                  className="mt-1 font-mono text-zinc-600/90 [font-size:8.5px]"
+                  dateTime={String(ev.timestamp)}
+                >
+                  {ev.timestamp}
+                </time>
               )}
               <p
                 className={[
-                  'mt-1 text-sm leading-snug',
-                  isTip
-                    ? 'text-slate-800'
-                    : 'text-amber-950/95',
+                  'mt-1.5 flex-1 leading-snug text-zinc-800/95',
+                  isCommand ? 'line-clamp-4 text-[11px]' : 'text-sm',
                 ].join(' ')}
               >
                 {ev.content}
               </p>
-              {isTip && rel != null && (
-                <div className="mt-2 border-t border-slate-300/80 pt-2">
-                  <div className="mb-0.5 flex items-center justify-between text-[9px] font-medium uppercase text-slate-600">
-                    <span>Reliability</span>
-                    <span className="tabular-nums">{rel}%</span>
-                  </div>
-                  <div
-                    className="h-1.5 w-full overflow-hidden rounded-full bg-slate-300/80"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={rel}
-                  >
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-500"
-                      style={{ width: `${rel}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </li>
+            </article>
           )
         })}
-      </ul>
+      </div>
     </div>
   )
 }

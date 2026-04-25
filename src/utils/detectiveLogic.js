@@ -423,3 +423,99 @@ export function parseCoordinatesString(value) {
 export function getEvidenceLatLng(ev) {
   return parseCoordinatesString(ev.coordinates)
 }
+
+/**
+ * Reads Jotform `from` / `to` for message evidence.
+ * @param {Evidence} ev
+ * @returns {{ fromKey: string, toKey: string } | null}
+ */
+export function getMessageFromToKeys(ev) {
+  if (ev.type !== 'message') return null
+  const raw = ev.raw
+  const flat =
+    raw &&
+    typeof raw === 'object' &&
+    'flat' in raw &&
+    raw.flat &&
+    typeof raw.flat === 'object'
+      ? /** @type {Record<string, string>} */ (raw.flat)
+      : null
+  if (!flat) return null
+  const fromKey = normalizeName(flat.from ?? flat.From ?? '')
+  const toKey = normalizeName(flat.to ?? flat.To ?? '')
+  if (!fromKey && !toKey) return null
+  return { fromKey: fromKey || '', toKey: toKey || '' }
+}
+
+/**
+ * One WhatsApp-style thread between two parties (or one if incomplete).
+ * @typedef {Object} MessageThread
+ * @property {string} threadId
+ * @property {string} displayLabel
+ * @property {string} leftMemberKey
+ * @property {string} rightMemberKey
+ * @property {Evidence[]} messages
+ */
+
+/**
+ * @param {Evidence[]} messageEvidences — should be only `type === 'message'`
+ * @returns {MessageThread[]}
+ */
+export function groupMessagesByContacts(messageEvidences) {
+  /** @type {Map<string, { threadId: string, displayLabel: string, leftMemberKey: string, rightMemberKey: string, messages: Evidence[] }>} */
+  const threads = new Map()
+
+  for (const ev of messageEvidences) {
+    if (ev.type !== 'message') continue
+    const ft = getMessageFromToKeys(ev)
+    if (!ft) continue
+    const { fromKey, toKey } = ft
+    const pair = [fromKey, toKey].filter(Boolean)
+    if (pair.length === 0) continue
+    const sorted = [...new Set(pair)].sort()
+    const threadId =
+      sorted.length >= 2
+        ? `${sorted[0]}::${sorted[1]}`
+        : sorted[0] || 'unknown'
+    if (!threads.has(threadId)) {
+      const leftK = sorted[0] || fromKey
+      const rightK = sorted.length >= 2 ? sorted[1] : leftK
+      const displayLabel =
+        sorted.length >= 2
+          ? `${toDisplayName(sorted[0])} & ${toDisplayName(sorted[1])}`
+          : toDisplayName(leftK)
+      threads.set(threadId, {
+        threadId,
+        displayLabel,
+        leftMemberKey: leftK,
+        rightMemberKey: rightK,
+        messages: [],
+      })
+    }
+    threads.get(threadId).messages.push(ev)
+  }
+
+  for (const t of threads.values()) {
+    t.messages.sort(
+      (a, b) => toTimeNumber(a.timestamp) - toTimeNumber(b.timestamp),
+    )
+  }
+  return [...threads.values()].sort((a, b) =>
+    a.displayLabel.localeCompare(b.displayLabel),
+  )
+}
+
+/**
+ * @param {Evidence} ev
+ * @param {MessageThread} thread
+ * @returns {boolean} true = bubble on the right (green “sent” style in WA)
+ */
+export function isMessageBubbleOnRight(ev, thread) {
+  const ft = getMessageFromToKeys(ev)
+  if (!ft || !ft.fromKey) return false
+  const sender = ft.fromKey
+  const { leftMemberKey, rightMemberKey } = thread
+  if (sender === rightMemberKey) return true
+  if (sender === leftMemberKey) return false
+  return sender === rightMemberKey
+}
